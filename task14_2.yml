@@ -1,0 +1,94 @@
+- hosts: localhost
+  vars_prompt:
+          - name: con_name
+            prompt: " Enter Container Name....>>>> "
+            private: no
+
+          - name: portno
+            prompt: " Enter the PORT number of docker host to attach with port 80 of the container...>>> "
+            private: no
+         
+  tasks:
+          - name: YUM repolist for DOCKER
+            yum_repository:
+                    name: "Docker"
+                    description: "Docker repository for RHEL8"
+                    baseurl: "https://download.docker.com/linux/centos/7/x86_64/stable/"
+                    gpgcheck: no
+                    enabled: yes
+
+          - name: Installing the docker-ce module
+            command:
+                    cmd: "yum install docker-ce --nobest -y"
+                    warn: false
+
+          - name: Python 3 Insatllation
+            package: 
+                    name: python3
+                    state: present
+
+          - name: Docker-py Installation 
+            pip:
+                    name: docker-py
+
+          - name: Docker Service Start
+            service:
+                    name: docker 
+                    state: started
+                    enabled: yes
+
+          - firewalld:
+                  port: 80/tcp
+                  permanent: yes 
+                  state: enabled
+                  zone:  public
+          - firewalld:
+                  port: 443/tcp
+                  permanent: yes
+                  state: enabled
+                  zone: public 
+          - firewalld:
+                  masquerade: yes
+                  permanent: yes
+                  state: enabled
+                  zone: public
+
+          - name: Firewall Restart 
+            service:
+                    name: firewalld
+                    state: reloaded
+                    enabled: yes
+
+          - name: Docker Image Pull 
+            docker_image:
+                    name: httpd
+                    source: pull
+
+          - name: Launching a Container
+            docker_container:
+                    name: "{{ con_name }}"
+                    image: "httpd"
+                    state: started
+                    interactive: yes
+                    detach: yes
+                    tty: yes
+                    volumes:
+                            - /webpages:/usr/local/apache2/htdocs
+                    ports:
+                            - "{{ portno }}:80"
+               
+          - name: Rtrieving IP of the container
+            docker_container_info:
+                 name: "{{ con_name }}"
+            register: coninfo
+
+          - debug:
+                  var: coninfo.container.NetworkSettings.IPAddress
+                                          
+          - name: Updating Ansible Inventory File
+               blockinfile:
+                    dest: "/root/Ansible_task_14/hosts.txt"
+                    block: |
+                            [docker]
+                            {{coninfo['container']['NetworkSettings']['IPAddrress']}} ansible_ssh_user=root ansible_ssh_pass=redhat 
+                    marker: ""
